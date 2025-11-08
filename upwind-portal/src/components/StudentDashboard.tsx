@@ -120,16 +120,16 @@ const StudentDashboard = () => {
 
   const lessons = lessonState;
 
-const lessonSignature = useMemo(
-  () =>
-    lessons
-      .map(
-        (lesson) =>
-          `${lesson.id}-${lesson.scheduledDate.toISOString()}-${lesson.status}`,
-      )
-      .join('|'),
-  [lessons],
-);
+  const lessonSignature = useMemo(
+    () =>
+      lessons
+        .map(
+          (lesson) =>
+            `${lesson.id}-${lesson.scheduledDate.toISOString()}-${lesson.status}`,
+        )
+        .join('|'),
+    [lessons],
+  );
 
   const firstConflictId = useMemo(() => {
     const conflictLesson = lessons.find((lesson) => lesson.status === 'weather-conflict');
@@ -202,114 +202,114 @@ const lessonSignature = useMemo(
 
   const student = findStudent(studentId);
 
-useEffect(() => {
-  if (!student || lessons.length === 0) {
-    return;
-  }
-
-  const now = new Date();
-  const relevantLessons = lessons.filter((lesson) => {
-    if (lesson.status === 'rescheduled') {
-      return false;
+  useEffect(() => {
+    if (!student || lessons.length === 0) {
+      return;
     }
-    const diffDays = differenceInDays(now, lesson.scheduledDate);
-    return diffDays >= 0 && diffDays < 7;
-  });
 
-  if (relevantLessons.length === 0) {
-    setLessonState((prev) => {
-      let changed = false;
-      const next = prev.map((lesson) => {
-        if (lesson.status === 'rescheduled') {
-          return lesson;
-        }
-        if (lesson.status !== 'scheduled') {
-          changed = true;
-          return { ...lesson, status: 'scheduled' };
-        }
-        return lesson;
-      });
-      return changed ? next : prev;
-    });
-    return;
-  }
-
-  let cancelled = false;
-
-  const uniqueLocations = Array.from(
-    new Map(
-      relevantLessons.map((lesson) => [
-        LOCATION_KEY(lesson.departureLocation),
-        lesson.departureLocation,
-      ]),
-    ).values(),
-  );
-
-  const evaluateConflicts = async () => {
-    try {
-      const forecastEntries = await Promise.all(
-        uniqueLocations.map(async (location) => {
-          const daily = await fetchWeatherForecast(location.lat, location.lon, 7);
-          return [LOCATION_KEY(location), daily] as const;
-        }),
-      );
-
-      if (cancelled) {
-        return;
+    const now = new Date();
+    const relevantLessons = lessons.filter((lesson) => {
+      if (lesson.status === 'rescheduled') {
+        return false;
       }
+      const diffDays = differenceInDays(now, lesson.scheduledDate);
+      return diffDays >= 0 && diffDays < 7;
+    });
 
-      const forecastMap = new Map<string, WeatherData[]>(forecastEntries);
-      const today = new Date();
-
+    if (relevantLessons.length === 0) {
       setLessonState((prev) => {
         let changed = false;
-        const next = prev.map((lesson) => {
+        const next = prev.map<FlightBooking>((lesson) => {
           if (lesson.status === 'rescheduled') {
             return lesson;
           }
-
-          const diffDays = differenceInDays(today, lesson.scheduledDate);
-          if (diffDays < 0 || diffDays >= 7) {
-            if (lesson.status !== 'scheduled') {
-              changed = true;
-              return { ...lesson, status: 'scheduled' };
-            }
-            return lesson;
-          }
-
-          const locationKey = LOCATION_KEY(lesson.departureLocation);
-          const dailyForecast = forecastMap.get(locationKey) ?? [];
-          const targetDateKey = getDateKey(lesson.scheduledDate);
-          const forecastForDay =
-            dailyForecast.find(
-              (entry) => getDateKey(entry.timestamp) === targetDateKey,
-            ) ?? null;
-
-          const nextStatus =
-            forecastForDay && !meetsStudentMinimums(student, forecastForDay)
-              ? 'weather-conflict'
-              : 'scheduled';
-
-          if (lesson.status !== nextStatus) {
+          if (lesson.status !== 'scheduled') {
             changed = true;
-            return { ...lesson, status: nextStatus };
+            return { ...lesson, status: 'scheduled' as const };
           }
           return lesson;
         });
-
         return changed ? next : prev;
       });
-    } catch (error) {
-      console.error('Failed to evaluate weather conflicts', error);
+      return;
     }
-  };
 
-  evaluateConflicts();
+    let cancelled = false;
 
-  return () => {
-    cancelled = true;
-  };
-}, [student, studentId, lessonSignature, lessons]);
+    const uniqueLocations = Array.from(
+      new Map(
+        relevantLessons.map((lesson) => [
+          LOCATION_KEY(lesson.departureLocation),
+          lesson.departureLocation,
+        ]),
+      ).values(),
+    );
+
+    const evaluateConflicts = async () => {
+      try {
+        const forecastEntries = await Promise.all(
+          uniqueLocations.map(async (location) => {
+            const daily = await fetchWeatherForecast(location.lat, location.lon, 7);
+            return [LOCATION_KEY(location), daily] as const;
+          }),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const forecastMap = new Map<string, WeatherData[]>(forecastEntries);
+        const today = new Date();
+
+        setLessonState((prev) => {
+          let changed = false;
+          const next = prev.map<FlightBooking>((lesson) => {
+            if (lesson.status === 'rescheduled') {
+              return lesson;
+            }
+
+            const diffDays = differenceInDays(today, lesson.scheduledDate);
+            if (diffDays < 0 || diffDays >= 7) {
+              if (lesson.status !== 'scheduled') {
+                changed = true;
+                return { ...lesson, status: 'scheduled' as const };
+              }
+              return lesson;
+            }
+
+            const locationKey = LOCATION_KEY(lesson.departureLocation);
+            const dailyForecast = forecastMap.get(locationKey) ?? [];
+            const targetDateKey = getDateKey(lesson.scheduledDate);
+            const forecastForDay =
+              dailyForecast.find(
+                (entry) => getDateKey(entry.timestamp) === targetDateKey,
+              ) ?? null;
+
+            const nextStatus: FlightBooking['status'] =
+              forecastForDay && !meetsStudentMinimums(student, forecastForDay)
+                ? 'weather-conflict'
+                : 'scheduled';
+
+            if (lesson.status !== nextStatus) {
+              changed = true;
+              return { ...lesson, status: nextStatus };
+            }
+            return lesson;
+          });
+
+          return changed ? next : prev;
+        });
+      } catch (error) {
+        console.error('Failed to evaluate weather conflicts', error);
+      }
+    };
+
+    evaluateConflicts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [student, studentId, lessonSignature, lessons]);
 
   if (!student) {
     return (
@@ -510,7 +510,7 @@ useEffect(() => {
                   item.id === bookingId
                     ? {
                         ...item,
-                        status: 'rescheduled',
+                        status: 'rescheduled' as const,
                         scheduledDate: new Date(newDateTime),
                       }
                     : item,
